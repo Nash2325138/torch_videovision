@@ -247,6 +247,65 @@ class CenterCrop(object):
         return cropped
 
 
+class RandomCentorCornerCrop(object):
+    """Extract center crop or the corners for a list of images
+
+    Args:
+    size (sequence or int): Desired output size for the
+    crop in format (h, w)
+    """
+
+    def __init__(self, size):
+        if isinstance(size, numbers.Number):
+            size = (size, size)
+
+        self.size = size
+
+    def __call__(self, clip):
+        """
+        Args:
+        img (PIL.Image or numpy.ndarray): List of images to be cropped
+        in format (h, w, c) in numpy.ndarray
+
+        Returns:
+        PIL.Image or numpy.ndarray: Cropped list of images
+        """
+        h, w = self.size
+        if isinstance(clip[0], np.ndarray):
+            im_h, im_w, im_c = clip[0].shape
+        elif isinstance(clip[0], PIL.Image.Image):
+            im_w, im_h = clip[0].size
+        else:
+            raise TypeError('Expected numpy.ndarray or PIL.Image' +
+                            'but got list of {0}'.format(type(clip[0])))
+        if w > im_w or h > im_h:
+            error_msg = (
+                'Initial image size should be larger then '
+                'cropped size but got cropped sizes : ({w}, {h}) while '
+                'initial image is ({im_w}, {im_h})'.format(
+                    im_w=im_w, im_h=im_h, w=w, h=h))
+            raise ValueError(error_msg)
+
+        decision = random.randrange(0, 5)
+        if decision == 0:
+            # centor crop
+            x1 = int(round((im_w - w) / 2.))
+            y1 = int(round((im_h - h) / 2.))
+        elif decision == 1:
+            x1, y1 = 0, 0  # left up corner
+        elif decision == 2:
+            x1, y1 = 0, im_h - h  # left down corner
+        elif decision == 3:
+            x1, y1 = im_w - w, 0  # right up corner
+        elif decision == 4:
+            x1, y1 = im_w - w, im_h - h  # right down corner
+        else:
+            raise ValueError('The random integer should be in the range [0, 4]')
+        cropped = F.crop_clip(clip, y1, x1, h, w)
+
+        return cropped
+
+
 class ColorJitter(object):
     """Randomly change the brightness, contrast and saturation and hue of the clip
 
