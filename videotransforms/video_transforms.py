@@ -251,15 +251,16 @@ class RandomCentorCornerCrop(object):
     """Extract center crop or the corners for a list of images
 
     Args:
-    size (sequence or int): Desired output size for the
-    crop in format (h, w)
+    size (sequence or int): Desired output size for th crop in format (h, w)
+    size_options (list): The width or hight to crop will be chosen randomly
+        from this options sequence if specified, and the 'size' argument will be ignored.
     """
 
-    def __init__(self, size):
+    def __init__(self, size=0, size_options=[]):
         if isinstance(size, numbers.Number):
             size = (size, size)
-
         self.size = size
+        self.size_options = size_options
 
     def __call__(self, clip):
         """
@@ -270,7 +271,12 @@ class RandomCentorCornerCrop(object):
         Returns:
         PIL.Image or numpy.ndarray: Cropped list of images
         """
-        h, w = self.size
+        if len(self.size_options) == 0:
+            h, w = self.size
+        else:
+            h = random.choice(self.size_options)
+            w = random.choice(self.size_options)
+
         if isinstance(clip[0], np.ndarray):
             im_h, im_w, im_c = clip[0].shape
         elif isinstance(clip[0], PIL.Image.Image):
