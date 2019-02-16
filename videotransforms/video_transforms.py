@@ -88,6 +88,36 @@ class RandomResize(object):
         return resized
 
 
+class ResizeShorterSide(object):
+    """Resizes a list of (H x W x C) numpy.ndarray to the final size
+    Args:
+    interpolation (str): Can be one of 'nearest', 'bilinear'
+    defaults to nearest
+    size (int): the vidoe will be resized sich taht the shorter side is this number.
+    """
+
+    def __init__(self, size=256, interpolation='nearest'):
+        self.size = size
+        self.interpolation = interpolation
+
+    def __call__(self, clip):
+        if isinstance(clip[0], np.ndarray):
+            im_h, im_w, im_c = clip[0].shape
+        elif isinstance(clip[0], PIL.Image.Image):
+            im_w, im_h = clip[0].size
+
+        if im_w < im_h:
+            scaling_factor = self.size / im_w
+        else:
+            scaling_factor = self.size / im_h
+
+        new_w = int(im_w * scaling_factor)
+        new_h = int(im_h * scaling_factor)
+        new_size = (new_w, new_h)
+        resized = F.resize_clip(clip, new_size, interpolation=self.interpolation)
+        return resized
+
+
 class Resize(object):
     """Resizes a list of (H x W x C) numpy.ndarray to the final size
 
