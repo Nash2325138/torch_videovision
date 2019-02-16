@@ -88,6 +88,36 @@ class RandomResize(object):
         return resized
 
 
+class ResizeShorterSide(object):
+    """Resizes a list of (H x W x C) numpy.ndarray to the final size
+    Args:
+    interpolation (str): Can be one of 'nearest', 'bilinear'
+    defaults to nearest
+    size (int): the vidoe will be resized sich taht the shorter side is this number.
+    """
+
+    def __init__(self, size=256, interpolation='nearest'):
+        self.size = size
+        self.interpolation = interpolation
+
+    def __call__(self, clip):
+        if isinstance(clip[0], np.ndarray):
+            im_h, im_w, im_c = clip[0].shape
+        elif isinstance(clip[0], PIL.Image.Image):
+            im_w, im_h = clip[0].size
+
+        if im_w < im_h:
+            scaling_factor = self.size / im_w
+        else:
+            scaling_factor = self.size / im_h
+
+        new_w = int(im_w * scaling_factor)
+        new_h = int(im_h * scaling_factor)
+        new_size = (new_w, new_h)
+        resized = F.resize_clip(clip, new_size, interpolation=self.interpolation)
+        return resized
+
+
 class Resize(object):
     """Resizes a list of (H x W x C) numpy.ndarray to the final size
 
@@ -242,6 +272,71 @@ class CenterCrop(object):
 
         x1 = int(round((im_w - w) / 2.))
         y1 = int(round((im_h - h) / 2.))
+        cropped = F.crop_clip(clip, y1, x1, h, w)
+
+        return cropped
+
+
+class RandomCentorCornerCrop(object):
+    """Extract center crop or the corners for a list of images
+
+    Args:
+    size (sequence or int): Desired output size for th crop in format (h, w)
+    size_options (list): The width or hight to crop will be chosen randomly
+        from this options sequence if specified, and the 'size' argument will be ignored.
+    """
+
+    def __init__(self, size=0, size_options=[]):
+        if isinstance(size, numbers.Number):
+            size = (size, size)
+        self.size = size
+        self.size_options = size_options
+
+    def __call__(self, clip):
+        """
+        Args:
+        img (PIL.Image or numpy.ndarray): List of images to be cropped
+        in format (h, w, c) in numpy.ndarray
+
+        Returns:
+        PIL.Image or numpy.ndarray: Cropped list of images
+        """
+        if len(self.size_options) == 0:
+            h, w = self.size
+        else:
+            h = random.choice(self.size_options)
+            w = random.choice(self.size_options)
+
+        if isinstance(clip[0], np.ndarray):
+            im_h, im_w, im_c = clip[0].shape
+        elif isinstance(clip[0], PIL.Image.Image):
+            im_w, im_h = clip[0].size
+        else:
+            raise TypeError('Expected numpy.ndarray or PIL.Image' +
+                            'but got list of {0}'.format(type(clip[0])))
+        if w > im_w or h > im_h:
+            error_msg = (
+                'Initial image size should be larger then '
+                'cropped size but got cropped sizes : ({w}, {h}) while '
+                'initial image is ({im_w}, {im_h})'.format(
+                    im_w=im_w, im_h=im_h, w=w, h=h))
+            raise ValueError(error_msg)
+
+        decision = random.randrange(0, 5)
+        if decision == 0:
+            # centor crop
+            x1 = int(round((im_w - w) / 2.))
+            y1 = int(round((im_h - h) / 2.))
+        elif decision == 1:
+            x1, y1 = 0, 0  # left up corner
+        elif decision == 2:
+            x1, y1 = 0, im_h - h  # left down corner
+        elif decision == 3:
+            x1, y1 = im_w - w, 0  # right up corner
+        elif decision == 4:
+            x1, y1 = im_w - w, im_h - h  # right down corner
+        else:
+            raise ValueError('The random integer should be in the range [0, 4]')
         cropped = F.crop_clip(clip, y1, x1, h, w)
 
         return cropped
