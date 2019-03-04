@@ -277,7 +277,7 @@ class CenterCrop(object):
         return cropped
 
 
-class RandomCentorCornerCrop(object):
+class RandomCenterCornerCrop(object):
     """Extract center crop or the corners for a list of images
 
     Args:
