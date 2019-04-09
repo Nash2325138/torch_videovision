@@ -1,33 +1,22 @@
 import random
 
-from videotransforms.utils import functional as F
+from .import functional as F
 
 
-class Normalize(object):
-    """Normalize a tensor image with mean and standard deviation
-
-    Given mean: m and std: s
-    will  normalize each channel as channel = (channel - mean) / std
-
-    Args:
-        mean (int): mean value
-        std (int): std value
-    """
-
+# Codes of this class is from: https://github.com/mit-han-lab/temporal-shift-module/blob/master/ops/transforms.py
+class GroupNormalize(object):
     def __init__(self, mean, std):
         self.mean = mean
         self.std = std
 
     def __call__(self, tensor):
-        """
-        Args:
-            tensor (Tensor): Tensor of stacked images or image
-            of size (C, H, W) to be normalized
+        rep_mean = self.mean * (tensor.size()[0] // len(self.mean))
+        rep_std = self.std * (tensor.size()[0] // len(self.std))
 
-        Returns:
-            Tensor: Normalized stack of image of image
-        """
-        return F.normalize(tensor, self.mean, self.std)
+        # TODO: make efficient
+        for t, m, s in zip(tensor, rep_mean, rep_std):
+            t.sub_(m).div_(s)
+        return tensor
 
 
 class SpatialRandomCrop(object):
