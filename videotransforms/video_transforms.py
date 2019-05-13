@@ -109,6 +109,8 @@ class RandomHorizontalFlip(object):
     """Horizontally flip the list of given images randomly
     with a probability 0.5
     """
+    def __init__(self, is_flow=False):
+        self.is_flow = is_flow
 
     def __call__(self, clip):
         """
@@ -122,10 +124,16 @@ class RandomHorizontalFlip(object):
         if random.random() < 0.5:
             if isinstance(clip[0], np.ndarray):
                 return [np.fliplr(img) for img in clip]
+                if self.is_flow:
+                    raise NotImplementedError("Inverting img in ndarray form is not implemented.")
             elif isinstance(clip[0], PIL.Image.Image):
                 return [
                     img.transpose(PIL.Image.FLIP_LEFT_RIGHT) for img in clip
                 ]
+                # Referenced from https://github.com/yjxiong/tsn-pytorch/blob/master/transforms.py
+                if self.is_flow:
+                    for i in range(0, len(clip), 2):  # Only direction u (horizontal) should be inverted!
+                        clip[i] = ImageOps.invert(clip[i])
             else:
                 raise TypeError('Expected numpy.ndarray or PIL.Image'
                                 ' but got list of {0}'.format(type(clip[0])))
