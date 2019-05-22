@@ -130,11 +130,24 @@ class Compose(object):
 
 
 class RandomHorizontalFlip(object):
-    """Horizontally flip the list of given images randomly
-    with a probability 0.5
+    """ Horizontally flip the list of given images randomly with a probability 0.5
+
+    Args:
+        manually_set_random: set if random flip only when initialized or manually calling set_random()
+            before the transform operation. Used when there are multiple modalities where the composed transform
+            need to be created each time in __getitem__() and applied to different modalities.
     """
-    def __init__(self, is_flow=False):
+    def __init__(self, is_flow=False, manually_set_random=False):
         self.is_flow = is_flow
+        self.manually_set_random = manually_set_random
+        if manually_set_random:
+            self.flip = self.set_random()
+
+    def set_flow(self, is_flow=True):
+        self.is_flow = is_flow
+
+    def set_random(self):
+        self.flip = random.random() < 0.5
 
     def __call__(self, clip):
         """
@@ -145,7 +158,7 @@ class RandomHorizontalFlip(object):
         Returns:
         PIL.Image or numpy.ndarray: Randomly flipped clip
         """
-        if random.random() < 0.5:
+        if (not self.manually_set_random and random.random() < 0.5) or (self.manually_set_random and self.flip):
             if isinstance(clip[0], np.ndarray):
                 return [np.fliplr(img) for img in clip]
                 if self.is_flow:
