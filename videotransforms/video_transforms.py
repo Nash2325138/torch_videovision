@@ -13,10 +13,17 @@ import torchvision
 from . import functional as F
 
 
-# Codes copied from https://github.com/mit-han-lab/temporal-shift-module/blob/master/ops/transforms.py
+# Based on https://github.com/mit-han-lab/temporal-shift-module/blob/master/ops/transforms.py
 class GroupMultiScaleCrop(object):
 
-    def __init__(self, input_size, scales=None, max_distort=1, fix_crop=True, more_fix_crop=True):
+    def __init__(self, input_size, scales=None, max_distort=1, fix_crop=True, more_fix_crop=True, manually_set_random=False):
+        """
+        Args:
+            input_size: image will be resized into input_size after cropped
+            manually_set_random: set crop size and random size only when first __call__ or manually calling set_random()
+                before the transform operation. Used when there are multiple modalities where the composed transform
+                need to be created each time in __getitem__() and applied to different modalities.
+        """
         self.scales = scales if scales is not None else [1, .875, .75, .66]
         self.max_distort = max_distort
         self.fix_crop = fix_crop
@@ -24,11 +31,28 @@ class GroupMultiScaleCrop(object):
         self.input_size = input_size if not isinstance(input_size, int) else [input_size, input_size]
         self.interpolation = Image.BILINEAR
 
+        self.manually_set_random = manually_set_random
+        if manually_set_random:
+            self.crop_w, self.crop_h, self.offset_w, self.offset_h = None, None, None, None
+
+    def set_random(self, im_size):
+        # Randomly set crop size and offset
+        self.crop_w, self.crop_h, self.offset_w, self.offset_h = self._sample_crop_size(im_size)
+
     def __call__(self, img_group):
 
         im_size = img_group[0].size
 
-        crop_w, crop_h, offset_w, offset_h = self._sample_crop_size(im_size)
+        # Random for each called
+        if not self.manually_set_random:
+            crop_w, crop_h, offset_w, offset_h = self._sample_crop_size(im_size)
+        # Random only when first called or manually set
+        else:
+            # First called
+            if self.crop_w is None:
+                self.set_random(im_size)
+            crop_w, crop_h, offset_w, offset_h = self.crop_w, self.crop_h, self.offset_w, self.offset_h
+
         crop_img_group = [img.crop((offset_w, offset_h, offset_w + crop_w, offset_h + crop_h)) for img in img_group]
         ret_img_group = [img.resize((self.input_size[0], self.input_size[1]), self.interpolation)
                          for img in crop_img_group]
@@ -106,11 +130,24 @@ class Compose(object):
 
 
 class RandomHorizontalFlip(object):
-    """Horizontally flip the list of given images randomly
-    with a probability 0.5
+    """ Horizontally flip the list of given images randomly with a probability 0.5
+
+    Args:
+        manually_set_random: set if random flip only when initialized or manually calling set_random()
+            before the transform operation. Used when there are multiple modalities where the composed transform
+            need to be created each time in __getitem__() and applied to different modalities.
     """
-    def __init__(self, is_flow=False):
+    def __init__(self, is_flow=False, manually_set_random=False):
         self.is_flow = is_flow
+        self.manually_set_random = manually_set_random
+        if manually_set_random:
+            self.flip = self.set_random()
+
+    def set_flow(self, is_flow=True):
+        self.is_flow = is_flow
+
+    def set_random(self):
+        self.flip = random.random() < 0.5
 
     def __call__(self, clip):
         """
@@ -121,7 +158,7 @@ class RandomHorizontalFlip(object):
         Returns:
         PIL.Image or numpy.ndarray: Randomly flipped clip
         """
-        if random.random() < 0.5:
+        if (not self.manually_set_random and random.random() < 0.5) or (self.manually_set_random and self.flip):
             if isinstance(clip[0], np.ndarray):
                 return [np.fliplr(img) for img in clip]
                 if self.is_flow:
