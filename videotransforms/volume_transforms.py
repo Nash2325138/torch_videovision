@@ -5,6 +5,22 @@ import torch
 from .utils import images as imageutils
 
 
+class MultiClipsToTensor(object):
+    """
+    Just like `ClipToTensor`, but handles a list of clips, i.e. a list
+    of lists of images
+    """
+    def __init__(self, channel_nb=3, div_255=True, numpy=False):
+        self.clipToTensor = ClipToTensor(channel_nb, div_255, numpy)
+
+    def __call__(self, clips):
+        transformed_clips = [self.clipToTensor(clip) for clip in clips]
+        if numpy:
+            return np.stack(transformed_clips, axis=0)
+        else:
+            return torch.stack(transformed_clips, dim=0)
+
+
 class ClipToTensor(object):
     """Convert a list of m (H x W x C) numpy.ndarrays in the range [0, 255]
     to a torch.FloatTensor of shape (C x m x H x W) in the range [0, 1.0]
