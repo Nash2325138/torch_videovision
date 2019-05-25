@@ -16,13 +16,23 @@ from . import functional as F
 # Based on https://github.com/mit-han-lab/temporal-shift-module/blob/master/ops/transforms.py
 class GroupMultiScaleCrop(object):
 
-    def __init__(self, input_size, scales=None, max_distort=1, fix_crop=True, more_fix_crop=True, manually_set_random=False):
+    def __init__(self, input_size, scales=None, max_distort=1, fix_crop=True, more_fix_crop=['center', 'corner'], manually_set_random=False):
         """
         Args:
-            input_size: image will be resized into input_size after cropped
-            manually_set_random: set crop size and random size only when first __call__ or manually calling set_random()
+            input_size:
+                Image will be resized into input_size after cropped
+            scales (list of float):
+                The valid ratios of the input image's shorter side to determine side length of cropping boxes
+            manually_set_random:
+                Set crop size and random size only when first __call__ or manually calling set_random()
                 before the transform operation. Used when there are multiple modalities where the composed transform
                 need to be created each time in __getitem__() and applied to different modalities.
+            fix_crop:
+                If True, then only positions defined in more_fix_crop will be sampled,
+                If False, the start (offsets) of the crop is randomly sampled.
+            more_fix_crop:
+                A list defining what kind of crops is going to be sampled if `fix_crop` is
+                True, allowing options are `center`, `corner`, `edge`, and `quarter`
         """
         self.scales = scales if scales is not None else [1, .875, .75, .66]
         self.max_distort = max_distort
@@ -87,29 +97,93 @@ class GroupMultiScaleCrop(object):
         return random.choice(offsets)
 
     @staticmethod
+    def get_n_crop_candidate(more_fix_crop):
+        count_map = {'corner': 4, 'center': 1, 'edge': 4, 'quarter': 4}
+        ans = 0
+        for kind in more_fix_crop:
+            ans += count_map(kind)
+        return ans
+
+    @staticmethod
     def fill_fix_offset(more_fix_crop, image_w, image_h, crop_w, crop_h):
+        """
+        Extract candidates of offset (start of x and y) for cropping
+
+        Args:
+            more_fix_crop: (list of str)
+                Defines what kind of cropping offsets to apply.
+                It could have 'corner', 'center', 'edge', and 'quarter' in this list
+        """
         w_step = (image_w - crop_w) // 4
         h_step = (image_h - crop_h) // 4
 
         ret = list()
-        ret.append((0, 0))  # upper left
-        ret.append((4 * w_step, 0))  # upper right
-        ret.append((0, 4 * h_step))  # lower left
-        ret.append((4 * w_step, 4 * h_step))  # lower right
-        ret.append((2 * w_step, 2 * h_step))  # center
+        if 'corner' in more_fix_crop:
+            ret.append((0, 0))  # upper left
+            ret.append((4 * w_step, 0))  # upper right
+            ret.append((0, 4 * h_step))  # lower left
+            ret.append((4 * w_step, 4 * h_step))  # lower right
 
-        if more_fix_crop:
+        if 'center' in more_fix_crop:
+            ret.append((2 * w_step, 2 * h_step))  # center
+
+        if 'edge' in more_fix_crop:
             ret.append((0, 2 * h_step))  # center left
             ret.append((4 * w_step, 2 * h_step))  # center right
             ret.append((2 * w_step, 4 * h_step))  # lower center
             ret.append((2 * w_step, 0 * h_step))  # upper center
 
+        if 'quarter' in more_fix_crop:
             ret.append((1 * w_step, 1 * h_step))  # upper left quarter
             ret.append((3 * w_step, 1 * h_step))  # upper right quarter
             ret.append((1 * w_step, 3 * h_step))  # lower left quarter
             ret.append((3 * w_step, 3 * h_step))  # lower righ quarter
 
         return ret
+
+
+# Modified from https://github.com/yjxiong/tsn-pytorch/blob/master/transforms.py
+class GroupOverSample(object):
+    """
+    Spatially multi-crops a video (including flipped cropped)
+    Args:
+        crop_size: `int`, `(int, int)`, or '[int, int]'
+            The size to crop
+        more_fix_crop: list of str
+            List of cropping types, please refer to GroupMultiScaleCrop.fill_fix_offset for valid options
+
+    Methods:
+        __call__: return a list of cropped videos (a video is of list of images)
+    """
+    def __init__(self, crop_size, more_fix_crop=['center', 'quarter', 'edge'], is_flow=False):
+        self.crop_size = crop_size if not isinstance(crop_size, int) else (crop_size, crop_size)
+        self.more_fix_crop = more_fix_crop
+        self.is_flow = is_flow
+
+    def set_flow(self, is_flow=True):
+        self.is_flow = is_flow
+
+    def __call__(self, img_group):
+        image_w, image_h = img_group[0].size
+        crop_w, crop_h = self.crop_size
+
+        offsets = GroupMultiScaleCrop.fill_fix_offset(more_fix_crop, image_w, image_h, crop_w, crop_h)
+        oversample_group = list()
+        for o_w, o_h in offsets:
+            normal_group = list()
+            flip_group = list()
+            for i, img in enumerate(img_group):
+                crop = img.crop((o_w, o_h, o_w + crop_w, o_h + crop_h))
+                normal_group.append(crop)
+                flip_crop = crop.copy().transpose(Image.FLIP_LEFT_RIGHT)
+
+                if self.is_flow and i % 2 == 0:  # Handle flow data
+                    flip_group.append(ImageOps.invert(flip_crop))
+                else:
+                    flip_group.append(flip_crop)
+
+            oversample_group.append(normal_group + flip_group)
+	return oversample_group
 
 
 class Compose(object):
@@ -445,7 +519,7 @@ class RandomCenterCornerCrop(object):
 
         decision = random.randrange(0, 5)
         if decision == 0:
-            # centor crop
+            # center crop
             x1 = int(round((im_w - w) / 2.))
             y1 = int(round((im_h - h) / 2.))
         elif decision == 1:
