@@ -33,6 +33,7 @@ def multi_clips_wrapper(Cls):
 
 
 # Based on https://github.com/mit-han-lab/temporal-shift-module/blob/master/ops/transforms.py
+@multi_clips_wrapper
 class GroupMultiScaleCrop(object):
 
     def __init__(self, input_size, scales=None, max_distort=1, fix_crop=True, more_fix_crop=['center', 'corner'], manually_set_random=False):
