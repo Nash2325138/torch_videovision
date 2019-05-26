@@ -13,6 +13,25 @@ import torchvision
 from . import functional as F
 
 
+def multi_clips_wrapper(Cls):
+    """
+    Decorator that makes a video transformer able to accept a list of
+    videos (i.e. a list of img_group) and return a list of transformed videos
+    """
+    class NewCls(Cls):
+        def __init__(self, *args, **kargs):
+            self.multi_clips = kargs.pop('multi_clips', False)  # default False
+            super(NewCls, self).__init__(*args, **kargs)
+
+        # Override the original __call__
+        def __call__(self, clip):
+            if self.multi_clips:
+                return [super(NewCls, self).__call__(c) for c in clip]
+            else:
+                return super(NewCls, self).__call__(clip)
+    return NewCls
+
+
 # Based on https://github.com/mit-han-lab/temporal-shift-module/blob/master/ops/transforms.py
 class GroupMultiScaleCrop(object):
 
@@ -160,16 +179,30 @@ class GroupOverSample(object):
     Methods:
         __call__: return a list of cropped videos (a video is of list of images)
     """
-    def __init__(self, crop_size, more_fix_crop, crop_flip=True, is_flow=False):
+    def __init__(self, crop_size, more_fix_crop=['center', 'quarter', 'edge'],
+                 crop_flip=True, is_flow=False, multi_clips=False):
         self.crop_size = crop_size if not isinstance(crop_size, int) else (crop_size, crop_size)
         self.more_fix_crop = more_fix_crop
         self.is_flow = is_flow
         self.crop_flip = crop_flip
 
+        # this class can not use decorator `multi_clips_wrapper` because its output
+        # is already a list of videos
+        self.multi_clips = multi_clips
+
     def set_flow(self, is_flow=True):
         self.is_flow = is_flow
 
     def __call__(self, img_group):
+        if self.multi_clips:
+            ret = []
+            for group in img_group:
+                ret.extend(self.work(group))
+            return ret
+        else:
+            return self.work(img_group)
+
+    def work(self, img_group):
         image_w, image_h = img_group[0].size
         crop_w, crop_h = self.crop_size
         offsets = GroupMultiScaleCrop.fill_fix_offset(self.more_fix_crop, image_w, image_h, crop_w, crop_h)
@@ -211,6 +244,7 @@ class Compose(object):
         return clip
 
 
+@multi_clips_wrapper
 class RandomHorizontalFlip(object):
     """ Horizontally flip the list of given images randomly with a probability 0.5
 
@@ -292,6 +326,7 @@ class RandomResize(object):
         return resized
 
 
+@multi_clips_wrapper
 class ResizeShorterSide(object):
     """Resizes a list of (H x W x C) numpy.ndarray to the final size
     Args:
@@ -322,6 +357,7 @@ class ResizeShorterSide(object):
         return resized
 
 
+@multi_clips_wrapper
 class Resize(object):
     """Resizes a list of (H x W x C) numpy.ndarray to the final size
 
@@ -334,18 +370,11 @@ class Resize(object):
     size (tuple): (widht, height)
     """
 
-    def __init__(self, size, interpolation='nearest', multi_clips=False):
+    def __init__(self, size, interpolation='nearest'):
         self.size = size
         self.interpolation = interpolation
-        self.multi_clips = multi_clips
 
     def __call__(self, clip):
-        if self.multi_clips:
-            return [self.work(c) for c in clip]
-        else:
-            return self.work(clip)
-
-    def work(self, clip):
         resized = F.resize_clip(
             clip, self.size, interpolation=self.interpolation)
         return resized
@@ -442,6 +471,7 @@ class RandomRotation(object):
         return rotated
 
 
+@multi_clips_wrapper
 class CenterCrop(object):
     """Extract center crop at the same location for a list of images
 
