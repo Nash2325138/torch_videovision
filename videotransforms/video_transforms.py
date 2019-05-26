@@ -139,6 +139,11 @@ class GroupMultiScaleCrop(object):
             ret.append((1 * w_step, 3 * h_step))  # lower left quarter
             ret.append((3 * w_step, 3 * h_step))  # lower righ quarter
 
+        if 'leftRightQuarter' in more_fix_crop:
+            ret.append((1 * w_step, 2 * h_step))  # center left quarter
+            ret.append((3 * w_step, 2 * h_step))  # center right quarter
+
+
         return ret
 
 
@@ -155,10 +160,11 @@ class GroupOverSample(object):
     Methods:
         __call__: return a list of cropped videos (a video is of list of images)
     """
-    def __init__(self, crop_size, more_fix_crop=['center', 'quarter', 'edge'], is_flow=False):
+    def __init__(self, crop_size, more_fix_crop, crop_flip=True, is_flow=False):
         self.crop_size = crop_size if not isinstance(crop_size, int) else (crop_size, crop_size)
         self.more_fix_crop = more_fix_crop
         self.is_flow = is_flow
+        self.crop_flip = crop_flip
 
     def set_flow(self, is_flow=True):
         self.is_flow = is_flow
@@ -166,24 +172,25 @@ class GroupOverSample(object):
     def __call__(self, img_group):
         image_w, image_h = img_group[0].size
         crop_w, crop_h = self.crop_size
-
         offsets = GroupMultiScaleCrop.fill_fix_offset(self.more_fix_crop, image_w, image_h, crop_w, crop_h)
         oversample_groups = list()
         for o_w, o_h in offsets:
             normal_group = list()
-            flip_group = list()
+            flipped_group = list()
             for i, img in enumerate(img_group):
                 crop = img.crop((o_w, o_h, o_w + crop_w, o_h + crop_h))
                 normal_group.append(crop)
-                flip_crop = crop.copy().transpose(Image.FLIP_LEFT_RIGHT)
 
-                if self.is_flow and i % 2 == 0:  # Handle flow data
-                    flip_group.append(ImageOps.invert(flip_crop))
-                else:
-                    flip_group.append(flip_crop)
+                if self.crop_flip:
+                    flipped_crop = crop.copy().transpose(Image.FLIP_LEFT_RIGHT)
+                    if self.is_flow and i % 2 == 0:  # Handle flow data
+                        flipped_group.append(ImageOps.invert(flipped_crop))
+                    else:
+                        flipped_group.append(flipped_crop)
 
             oversample_groups.append(normal_group)
-            oversample_groups.append(flip_group)
+            if self.crop_flip:
+                oversample_groups.append(flipped_group)
         return oversample_groups
 
 
