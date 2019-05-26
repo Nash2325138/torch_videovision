@@ -3,29 +3,28 @@ import random
 from .import functional as F
 
 
-class MultiGroupsNormalize(object):
-    """
-    Wrap a `GroupNormalize`to process a list of videos instead of
-    a list of images.
-    """
-    def __init__(self, mean, std):
-        self.worker = GroupNormalize(mean, std)
-
-    def __call__(self, tensors):
-        tensors = [self.worker(tensor) for tensor in tensors]
-        return torch.stack(tensors, dim=0)
-
-
 # Based on https://github.com/mit-han-lab/temporal-shift-module/blob/master/ops/transforms.py
 class GroupNormalize(object):
     """
-    Normalize a list of images
+    Normalize a list of images.
+    Args:
+        mean: mean of image for each channel
+        std: std of image for each channel
+        multi_clips: set True if input is a list of videos instead of one video
     """
-    def __init__(self, mean, std):
+    def __init__(self, mean, std, multi_clips=False):
         self.mean = mean
         self.std = std
+        self.multi_clips = multi_clips
 
     def __call__(self, tensor):
+        if self.multi_clips:
+            tensors = [self.work(t) for t in tensor]
+            return torch.stack(tensors, dim=0)
+        else:
+            return self.work(tensor)
+
+    def work(self, tensor):
         rep_mean = self.mean * (tensor.size()[0] // len(self.mean))
         rep_std = self.std * (tensor.size()[0] // len(self.std))
 

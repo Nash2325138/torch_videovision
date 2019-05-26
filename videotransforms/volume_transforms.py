@@ -5,33 +5,33 @@ import torch
 from .utils import images as imageutils
 
 
-class MultiClipsToTensor(object):
-    """
-    Just like `ClipToTensor`, but handles a list of clips, i.e. a list
-    of lists of images
-    """
-    def __init__(self, channel_nb=3, div_255=True, numpy=False):
-        self.clipToTensor = ClipToTensor(channel_nb, div_255, numpy)
-
-    def __call__(self, clips):
-        transformed_clips = [self.clipToTensor(clip) for clip in clips]
-        if numpy:
-            return np.stack(transformed_clips, axis=0)
-        else:
-            return torch.stack(transformed_clips, dim=0)
-
-
 class ClipToTensor(object):
     """Convert a list of m (H x W x C) numpy.ndarrays in the range [0, 255]
     to a torch.FloatTensor of shape (C x m x H x W) in the range [0, 1.0]
+    Args:
+        channel_nb: number of the image channel
+        div_500: set True to divide out by 255
+        numpy: set True to return numpy array
+        milti_clips: set True if input is a list of videos instead of one video
     """
 
-    def __init__(self, channel_nb=3, div_255=True, numpy=False):
+    def __init__(self, channel_nb=3, div_255=True, numpy=False, multi_clips=False):
         self.channel_nb = channel_nb
         self.div_255 = div_255
         self.numpy = numpy
+        self.multi_clips = multi_clips
 
     def __call__(self, clip):
+        if self.multi_clips:
+            transformed_clips = [self.work(c) for c in clip]
+            if numpy:
+                return np.stack(transformed_clips, axis=0)
+            else:
+                return torch.stack(transformed_clips, dim=0)
+        else:
+            return self.work(c)
+
+    def work(self, clip):
         """
         Args: clip (list of numpy.ndarray): clip (list of images)
         to be converted to tensor.
