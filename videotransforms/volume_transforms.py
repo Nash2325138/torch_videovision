@@ -24,12 +24,12 @@ class ClipToTensor(object):
     def __call__(self, clip):
         if self.multi_clips:
             transformed_clips = [self.work(c) for c in clip]
-            if numpy:
+            if self.numpy:
                 return np.stack(transformed_clips, axis=0)
             else:
                 return torch.stack(transformed_clips, dim=0)
         else:
-            return self.work(c)
+            return self.work(clip)
 
     def work(self, clip):
         """

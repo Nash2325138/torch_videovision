@@ -2,7 +2,7 @@ import numbers
 import random
 
 import cv2
-from PIL import Image
+from PIL import Image, ImageOps
 from matplotlib import pyplot as plt
 import numpy as np
 import PIL
@@ -167,8 +167,8 @@ class GroupOverSample(object):
         image_w, image_h = img_group[0].size
         crop_w, crop_h = self.crop_size
 
-        offsets = GroupMultiScaleCrop.fill_fix_offset(more_fix_crop, image_w, image_h, crop_w, crop_h)
-        oversample_group = list()
+        offsets = GroupMultiScaleCrop.fill_fix_offset(self.more_fix_crop, image_w, image_h, crop_w, crop_h)
+        oversample_groups = list()
         for o_w, o_h in offsets:
             normal_group = list()
             flip_group = list()
@@ -182,8 +182,9 @@ class GroupOverSample(object):
                 else:
                     flip_group.append(flip_crop)
 
-            oversample_group.append(normal_group + flip_group)
-	return oversample_group
+            oversample_groups.append(normal_group)
+            oversample_groups.append(flip_group)
+        return oversample_groups
 
 
 class Compose(object):
@@ -234,17 +235,18 @@ class RandomHorizontalFlip(object):
         """
         if (not self.manually_set_random and random.random() < 0.5) or (self.manually_set_random and self.flip):
             if isinstance(clip[0], np.ndarray):
-                return [np.fliplr(img) for img in clip]
                 if self.is_flow:
                     raise NotImplementedError("Inverting img in ndarray form is not implemented.")
+                return [np.fliplr(img) for img in clip]
             elif isinstance(clip[0], PIL.Image.Image):
+                # The Flow part referenced from
+                # https://github.com/yjxiong/tsn-pytorch/blob/master/transforms.py
                 return [
-                    img.transpose(PIL.Image.FLIP_LEFT_RIGHT) for img in clip
+                    ImageOps.invert(img.transpose(PIL.Image.FLIP_LEFT_RIGHT))
+                    if self.is_flow and i % 2 == 0 else
+                    img.transpose(PIL.Image.FLIP_LEFT_RIGHT)
+                    for i, img in enumerate(clip)
                 ]
-                # Referenced from https://github.com/yjxiong/tsn-pytorch/blob/master/transforms.py
-                if self.is_flow:
-                    for i in range(0, len(clip), 2):  # Only direction u (horizontal) should be inverted!
-                        clip[i] = ImageOps.invert(clip[i])
             else:
                 raise TypeError('Expected numpy.ndarray or PIL.Image'
                                 ' but got list of {0}'.format(type(clip[0])))
@@ -325,11 +327,18 @@ class Resize(object):
     size (tuple): (widht, height)
     """
 
-    def __init__(self, size, interpolation='nearest'):
+    def __init__(self, size, interpolation='nearest', multi_clips=False):
         self.size = size
         self.interpolation = interpolation
+        self.multi_clips = multi_clips
 
     def __call__(self, clip):
+        if self.multi_clips:
+            return [self.work(c) for c in clip]
+        else:
+            return self.work(clip)
+
+    def work(self, clip):
         resized = F.resize_clip(
             clip, self.size, interpolation=self.interpolation)
         return resized
